@@ -1,6 +1,6 @@
 import * as fs from 'fs/promises'
 import type { Octokit } from '@octokit/rest'
-import type { RepoSyncPlan, RepoFileMapping, FileChange, SyncResult } from '../types'
+import type { RepoSyncPlan, RepoFileMapping, FileChange, SyncResult, PullRequestInfo } from '../types'
 import { getDefaultBranch, getBranchSha, createBranch, updateBranchRef } from '../github/branch'
 import { getFileContent, createTreeWithFiles, createCommit, listDirectoryFiles } from '../github/content'
 import { findExistingPR, createPR, updatePR } from '../github/pull-request'
@@ -39,21 +39,13 @@ export const syncRepo = async (
     }
 
     const targetContents = await fetchTargetContents(
-      octokit,
-      owner,
-      repo,
-      expandedFiles.map((f) => f.dest),
-      defaultBranch
+      octokit, owner, repo, expandedFiles.map((f) => f.dest), defaultBranch
     )
 
     const fileChanges = computeFileChanges(expandedFiles, sourceContents, targetContents)
-
     const orphanedChanges = hasDeleteEnabled
-      ? await detectOrphanedFiles(
-          octokit, owner, repo, expandedFiles, directoryDests, defaultBranch
-        )
+      ? await detectOrphanedFiles(octokit, owner, repo, expandedFiles, directoryDests, defaultBranch)
       : []
-
     const changes = [...fileChanges, ...orphanedChanges]
 
     if (!hasChanges(changes)) {
@@ -69,72 +61,105 @@ export const syncRepo = async (
       return { repoFullName, status: 'skipped', changes }
     }
 
-    const existingPR = await findExistingPR(octokit, owner, repo, BRANCH_NAME)
+    const existingPR = await findExistingPR(octokit, owner, repo, BRANCH_NAME) ?? undefined
     const existingBranchSha = await getBranchSha(octokit, owner, repo, BRANCH_NAME)
 
-    // If sync branch exists, compare against it to avoid redundant commits
-    if (existingBranchSha && existingPR) {
-      const branchContents = await fetchTargetContents(
-        octokit,
-        owner,
-        repo,
-        expandedFiles.map((f) => f.dest),
-        BRANCH_NAME
-      )
-      const branchFileChanges = computeFileChanges(expandedFiles, sourceContents, branchContents)
-
-      const branchOrphanedChanges = hasDeleteEnabled
-        ? await detectOrphanedFiles(
-            octokit, owner, repo, expandedFiles, directoryDests, BRANCH_NAME
-          )
-        : []
-
-      const branchChanges = [...branchFileChanges, ...branchOrphanedChanges]
-
-      if (!hasChanges(branchChanges)) {
-        logger.info(`Sync branch already up to date for ${repoFullName}`)
-        return {
-          repoFullName,
-          status: 'skipped',
-          pr: existingPR,
-          changes: branchChanges,
-        }
-      }
+    const upToDateResult = await checkBranchUpToDate(
+      octokit, owner, repo, repoFullName, expandedFiles, sourceContents,
+      hasDeleteEnabled, directoryDests, existingBranchSha, existingPR
+    )
+    if (upToDateResult) {
+      return upToDateResult
     }
 
-    if (!existingBranchSha) {
-      await createBranch(octokit, owner, repo, BRANCH_NAME, baseSha)
-    } else {
-      await updateBranchRef(octokit, owner, repo, BRANCH_NAME, baseSha)
-    }
+    await createSyncCommit(octokit, owner, repo, baseSha, existingBranchSha, changes, options)
 
-    const baseCommitData = await octokit.git.getCommit({
-      owner,
-      repo,
-      commit_sha: baseSha,
-    })
-    const baseTreeSha = baseCommitData.data.tree.sha
-
-    const treeSha = await createTreeWithFiles(octokit, owner, repo, baseTreeSha, changes)
-    const commitMessage = buildCommitMessage(options, changes)
-    const commitSha = await createCommit(octokit, owner, repo, commitMessage, treeSha, baseSha)
-    await updateBranchRef(octokit, owner, repo, BRANCH_NAME, commitSha)
-
-    const prBody = buildPRBody(options, changes)
-    const prTitle = `${options.prTitlePrefix} ${options.sourceRepo}`
-
-    const pr = existingPR
-      ? await updatePR(octokit, owner, repo, existingPR.number, prTitle, prBody)
-      : await createPR(octokit, owner, repo, prTitle, prBody, BRANCH_NAME, defaultBranch)
-
-    logger.info(`PR ${existingPR ? 'updated' : 'created'}: ${pr.url}`)
-
+    const pr = await createOrUpdatePR(octokit, owner, repo, existingPR, defaultBranch, options, changes)
     return { repoFullName, status: 'success', pr, changes }
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err)
     logger.error(`Failed to sync ${repoFullName}: ${message}`)
     return { repoFullName, status: 'error', changes: [], error: message }
   }
+}
+
+const checkBranchUpToDate = async (
+  octokit: Octokit,
+  owner: string,
+  repo: string,
+  repoFullName: string,
+  expandedFiles: readonly RepoFileMapping[],
+  sourceContents: ReadonlyMap<string, string>,
+  hasDeleteEnabled: boolean,
+  directoryDests: readonly string[],
+  existingBranchSha: string | null,
+  existingPR: PullRequestInfo | undefined
+): Promise<SyncResult | null> => {
+  if (!existingBranchSha || !existingPR) {
+    return null
+  }
+
+  const branchContents = await fetchTargetContents(
+    octokit, owner, repo, expandedFiles.map((f) => f.dest), BRANCH_NAME
+  )
+  const branchFileChanges = computeFileChanges(expandedFiles, sourceContents, branchContents)
+
+  const branchOrphanedChanges = hasDeleteEnabled
+    ? await detectOrphanedFiles(octokit, owner, repo, expandedFiles, directoryDests, BRANCH_NAME)
+    : []
+
+  const branchChanges = [...branchFileChanges, ...branchOrphanedChanges]
+
+  if (!hasChanges(branchChanges)) {
+    logger.info(`Sync branch already up to date for ${repoFullName}`)
+    return { repoFullName, status: 'skipped', pr: existingPR, changes: branchChanges }
+  }
+
+  return null
+}
+
+const createSyncCommit = async (
+  octokit: Octokit,
+  owner: string,
+  repo: string,
+  baseSha: string,
+  existingBranchSha: string | null,
+  changes: readonly FileChange[],
+  options: ExecutorOptions
+): Promise<void> => {
+  if (!existingBranchSha) {
+    await createBranch(octokit, owner, repo, BRANCH_NAME, baseSha)
+  } else {
+    await updateBranchRef(octokit, owner, repo, BRANCH_NAME, baseSha)
+  }
+
+  const baseCommitData = await octokit.git.getCommit({ owner, repo, commit_sha: baseSha })
+  const baseTreeSha = baseCommitData.data.tree.sha
+
+  const treeSha = await createTreeWithFiles(octokit, owner, repo, baseTreeSha, changes)
+  const commitMessage = buildCommitMessage(options, changes)
+  const commitSha = await createCommit(octokit, owner, repo, commitMessage, treeSha, baseSha)
+  await updateBranchRef(octokit, owner, repo, BRANCH_NAME, commitSha)
+}
+
+const createOrUpdatePR = async (
+  octokit: Octokit,
+  owner: string,
+  repo: string,
+  existingPR: PullRequestInfo | undefined,
+  defaultBranch: string,
+  options: ExecutorOptions,
+  changes: readonly FileChange[]
+): Promise<PullRequestInfo> => {
+  const prBody = buildPRBody(options, changes)
+  const prTitle = `${options.prTitlePrefix} ${options.sourceRepo}`
+
+  const pr = existingPR
+    ? await updatePR(octokit, owner, repo, existingPR.number, prTitle, prBody)
+    : await createPR(octokit, owner, repo, prTitle, prBody, BRANCH_NAME, defaultBranch)
+
+  logger.info(`PR ${existingPR ? 'updated' : 'created'}: ${pr.url}`)
+  return pr
 }
 
 const detectOrphanedFiles = async (
@@ -234,7 +259,7 @@ const buildCommitMessage = (
 }
 
 const sanitizeForMarkdown = (text: string): string => {
-  return text.replace(/[`|\\[\]<>]/g, '')
+  return text.replace(/[`|\\[\]<>*_~#!()]/g, '')
 }
 
 const buildPRBody = (

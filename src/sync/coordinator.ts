@@ -18,15 +18,15 @@ export const syncAllRepos = async (
   options: CoordinatorOptions
 ): Promise<readonly SyncResult[]> => {
   const plans = buildRepoSyncPlans(config)
-  const results: SyncResult[] = []
 
   logger.info(`Syncing to ${plans.length} repository(ies)`)
 
+  let results: readonly SyncResult[] = []
   for (const plan of plans) {
     logger.startGroup(`Syncing: ${plan.repoFullName}`)
     try {
       const result = await syncRepo(octokit, plan, options)
-      results.push(result)
+      results = [...results, result]
     } finally {
       logger.endGroup()
     }

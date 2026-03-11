@@ -5,7 +5,7 @@ import { parseConfigFile } from './config/parser'
 import { syncAllRepos } from './sync/coordinator'
 import { validatePathWithinWorkspace } from './utils/validation'
 
-const run = async (): Promise<void> => {
+export const run = async (): Promise<void> => {
   const token = core.getInput('token', { required: true })
   core.setSecret(token)
 

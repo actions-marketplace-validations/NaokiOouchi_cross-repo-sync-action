@@ -1,4 +1,6 @@
 import type { Octokit } from '@octokit/rest'
+import { isNotFoundError } from './errors'
+import * as logger from '../utils/logger'
 
 export const getDefaultBranch = async (
   octokit: Octokit,
@@ -52,6 +54,7 @@ export const updateBranchRef = async (
   branch: string,
   sha: string
 ): Promise<void> => {
+  logger.warn(`Force-updating branch ${branch} in ${owner}/${repo}`)
   await octokit.git.updateRef({
     owner,
     repo,
@@ -59,13 +62,4 @@ export const updateBranchRef = async (
     sha,
     force: true,
   })
-}
-
-const isNotFoundError = (err: unknown): boolean => {
-  return (
-    typeof err === 'object' &&
-    err !== null &&
-    'status' in err &&
-    (err as { status: number }).status === 404
-  )
 }

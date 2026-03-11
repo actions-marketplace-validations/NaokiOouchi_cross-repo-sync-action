@@ -32,17 +32,15 @@ export const expandDirectoryMapping = async (
 
 const listFilesRecursively = async (dir: string): Promise<readonly string[]> => {
   const entries = await fs.readdir(dir, { withFileTypes: true })
-  const results: string[] = []
 
-  for (const entry of entries) {
-    const fullPath = path.join(dir, entry.name)
-    if (entry.isDirectory()) {
-      const nested = await listFilesRecursively(fullPath)
-      results.push(...nested)
-    } else {
-      results.push(fullPath)
-    }
-  }
-
-  return results.sort()
+  const nestedResults = await Promise.all(
+    entries.map(async (entry) => {
+      const fullPath = path.join(dir, entry.name)
+      if (entry.isDirectory()) {
+        return listFilesRecursively(fullPath)
+      }
+      return [fullPath]
+    })
+  )
+  return nestedResults.flat().sort()
 }

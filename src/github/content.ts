@@ -1,5 +1,6 @@
 import type { Octokit } from '@octokit/rest'
 import type { FileChange } from '../types'
+import { isNotFoundError } from './errors'
 
 export interface FileContent {
   readonly content: string
@@ -117,26 +118,13 @@ const listDirectoryFilesRecursively = async (
     return [dirPath]
   }
 
-  const results: string[] = []
-  for (const item of data) {
-    if (item.type === 'dir') {
-      const nested = await listDirectoryFilesRecursively(
-        octokit, owner, repo, item.path, ref
-      )
-      results.push(...nested)
-    } else {
-      results.push(item.path)
-    }
-  }
-
-  return results.sort()
-}
-
-const isNotFoundError = (err: unknown): boolean => {
-  return (
-    typeof err === 'object' &&
-    err !== null &&
-    'status' in err &&
-    (err as { status: number }).status === 404
+  const nestedResults = await Promise.all(
+    data.map(async (item) => {
+      if (item.type === 'dir') {
+        return listDirectoryFilesRecursively(octokit, owner, repo, item.path, ref)
+      }
+      return [item.path]
+    })
   )
+  return nestedResults.flat().sort()
 }

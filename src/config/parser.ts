@@ -26,7 +26,11 @@ export const buildRepoSyncPlans = (config: SyncConfig): readonly RepoSyncPlan[] 
   }
 
   return Array.from(repoMap.entries()).map(([repoFullName, files]) => {
-    const [owner, repo] = repoFullName.split('/')
+    const parts = repoFullName.split('/')
+    if (parts.length !== 2 || !parts[0] || !parts[1]) {
+      throw new Error(`Invalid repo format: ${repoFullName}. Expected "owner/repo".`)
+    }
+    const [owner, repo] = parts
     return { repoFullName, owner, repo, files }
   })
 }
