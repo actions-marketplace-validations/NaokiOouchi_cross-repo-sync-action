@@ -1,8 +1,16 @@
 import { z } from 'zod'
+import { validateRelativePath, validateDestPath } from '../utils/validation'
 
 const fileMappingSchema = z.object({
-  src: z.string().min(1, 'src path must not be empty'),
-  dest: z.string().min(1, 'dest path must not be empty'),
+  src: z
+    .string()
+    .min(1, 'src path must not be empty')
+    .refine(validateRelativePath, 'src must be a relative path without .. segments'),
+  dest: z
+    .string()
+    .min(1, 'dest path must not be empty')
+    .refine(validateRelativePath, 'dest must be a relative path without .. segments')
+    .refine(validateDestPath, 'dest path contains invalid characters'),
   repos: z
     .array(
       z

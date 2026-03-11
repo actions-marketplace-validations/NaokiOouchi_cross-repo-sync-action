@@ -8,7 +8,7 @@ export const parseConfigFile = async (
   filePath: string
 ): Promise<SyncConfig> => {
   const content = await fs.readFile(filePath, 'utf-8')
-  const raw = yaml.load(content)
+  const raw = yaml.load(content, { schema: yaml.JSON_SCHEMA })
   return syncConfigSchema.parse(raw)
 }
 

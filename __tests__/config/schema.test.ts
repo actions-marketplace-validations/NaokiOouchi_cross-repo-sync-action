@@ -164,4 +164,60 @@ describe('syncConfigSchema', () => {
 
     expect(() => syncConfigSchema.parse(input)).toThrow()
   })
+
+  it('should reject absolute src path', () => {
+    const input = {
+      sync: [
+        {
+          src: '/etc/passwd',
+          dest: 'leaked.txt',
+          repos: ['org/repo'],
+        },
+      ],
+    }
+
+    expect(() => syncConfigSchema.parse(input)).toThrow()
+  })
+
+  it('should reject src path with .. traversal', () => {
+    const input = {
+      sync: [
+        {
+          src: '../../../etc/passwd',
+          dest: 'leaked.txt',
+          repos: ['org/repo'],
+        },
+      ],
+    }
+
+    expect(() => syncConfigSchema.parse(input)).toThrow()
+  })
+
+  it('should reject absolute dest path', () => {
+    const input = {
+      sync: [
+        {
+          src: 'file.md',
+          dest: '/tmp/file.md',
+          repos: ['org/repo'],
+        },
+      ],
+    }
+
+    expect(() => syncConfigSchema.parse(input)).toThrow()
+  })
+
+  it('should reject dest path with special characters', () => {
+    const input = {
+      sync: [
+        {
+          src: 'file.md',
+          dest: '` | injected |',
+          repos: ['org/repo'],
+        },
+      ],
+    }
+
+    expect(() => syncConfigSchema.parse(input)).toThrow()
+  })
 })

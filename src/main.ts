@@ -3,9 +3,12 @@ import * as github from '@actions/github'
 import { createGitHubClient } from './github/client'
 import { parseConfigFile } from './config/parser'
 import { syncAllRepos } from './sync/coordinator'
+import { validatePathWithinWorkspace } from './utils/validation'
 
 const run = async (): Promise<void> => {
   const token = core.getInput('token', { required: true })
+  core.setSecret(token)
+
   const configPath = core.getInput('config-path')
   const dryRun = core.getBooleanInput('dry-run')
   const prTitlePrefix = core.getInput('pr-title-prefix')
@@ -22,7 +25,8 @@ const run = async (): Promise<void> => {
     core.info('Running in DRY RUN mode')
   }
 
-  const config = await parseConfigFile(configPath)
+  const resolvedConfigPath = validatePathWithinWorkspace(configPath, 'config-path')
+  const config = await parseConfigFile(resolvedConfigPath)
   const octokit = createGitHubClient(token)
 
   const results = await syncAllRepos(octokit, config, {

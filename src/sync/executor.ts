@@ -7,6 +7,7 @@ import { findExistingPR, createPR, updatePR } from '../github/pull-request'
 import { computeFileChanges, computeOrphanedFiles, hasChanges } from './differ'
 import { expandDirectoryMappings, getDirectoryDestPaths } from '../config/parser'
 import { BRANCH_NAME, PR_MARKER } from '../utils/constants'
+import { validatePathWithinWorkspace } from '../utils/validation'
 import * as logger from '../utils/logger'
 
 interface ExecutorOptions {
@@ -61,6 +62,7 @@ export const syncRepo = async (
     }
 
     logChanges(repoFullName, changes)
+    warnSensitivePaths(changes)
 
     if (options.dryRun) {
       logger.info(`[DRY RUN] Would create PR for ${repoFullName}`)
@@ -163,9 +165,10 @@ const readSourceFiles = async (
   paths: readonly string[]
 ): Promise<ReadonlyMap<string, string>> => {
   const entries = await Promise.all(
-    paths.map(async (path) => {
-      const content = await fs.readFile(path, 'utf-8')
-      return [path, content] as const
+    paths.map(async (filePath) => {
+      const resolved = validatePathWithinWorkspace(filePath, 'src')
+      const content = await fs.readFile(resolved, 'utf-8')
+      return [filePath, content] as const
     })
   )
   return new Map(entries)
@@ -200,6 +203,20 @@ const logChanges = (
   }
 }
 
+const SENSITIVE_PATHS = ['.github/workflows/']
+
+const warnSensitivePaths = (
+  changes: readonly { dest: string; status: string }[]
+): void => {
+  const sensitiveChanges = changes.filter((c) =>
+    c.status !== 'unchanged' &&
+    SENSITIVE_PATHS.some((p) => c.dest.startsWith(p))
+  )
+  for (const change of sensitiveChanges) {
+    logger.warn(`Syncing to sensitive path: ${change.dest}`)
+  }
+}
+
 const buildCommitMessage = (
   options: ExecutorOptions,
   changes: readonly { dest: string; status: string }[]
@@ -216,13 +233,17 @@ const buildCommitMessage = (
   ].join('\n')
 }
 
+const sanitizeForMarkdown = (text: string): string => {
+  return text.replace(/[`|\\[\]<>]/g, '')
+}
+
 const buildPRBody = (
   options: ExecutorOptions,
   changes: readonly { dest: string; status: string }[]
 ): string => {
   const actualChanges = changes.filter((c) => c.status !== 'unchanged')
   const rows = actualChanges
-    .map((c) => `| \`${c.dest}\` | ${c.status} |`)
+    .map((c) => `| \`${sanitizeForMarkdown(c.dest)}\` | ${c.status} |`)
     .join('\n')
 
   return [
