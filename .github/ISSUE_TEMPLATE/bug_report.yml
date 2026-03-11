@@ -1,0 +1,38 @@
+name: Bug Report
+description: Report a bug
+labels: [bug]
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What happened?
+    validations:
+      required: true
+
+  - type: textarea
+    id: config
+    attributes:
+      label: Sync Config
+      description: Your sync-config.yml (redact repo names if needed)
+      render: yaml
+
+  - type: textarea
+    id: workflow
+    attributes:
+      label: Workflow
+      description: Your workflow file
+      render: yaml
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Action Logs
+      description: Relevant output from the action run
+      render: text
+
+  - type: input
+    id: version
+    attributes:
+      label: Action Version
+      placeholder: v1.0.0

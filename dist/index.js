@@ -665,10 +665,10 @@ const buildPRBody = (options, changes) => {
     return [
         '## Cross-Repo Sync',
         '',
-        `This PR was automatically created by [cross-repo-sync-action](https://github.com/poko-tech/cross-repo-sync-action).`,
+        `This PR was automatically created by [cross-repo-sync-action](https://github.com/NaokiOouchi/cross-repo-sync-action).`,
         '',
-        `**Source repository:** \`${options.sourceRepo}\``,
-        `**Source commit:** \`${options.sourceSha}\``,
+        `**Source repository:** [${options.sourceRepo}](https://github.com/${options.sourceRepo})`,
+        `**Source commit:** [${options.sourceSha.slice(0, 7)}](https://github.com/${options.sourceRepo}/commit/${options.sourceSha})`,
         '',
         '### Changes',
         '| File | Status |',
