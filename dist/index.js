@@ -291,7 +291,8 @@ const createCommit = async (octokit, owner, repo, message, treeSha, parentSha) =
 exports.createCommit = createCommit;
 const listDirectoryFiles = async (octokit, owner, repo, dirPath, ref) => {
     try {
-        return await listDirectoryFilesRecursively(octokit, owner, repo, dirPath, ref);
+        const normalizedPath = dirPath.replace(/\/+$/, '');
+        return await listDirectoryFilesRecursively(octokit, owner, repo, normalizedPath, ref);
     }
     catch (err) {
         if ((0, errors_1.isNotFoundError)(err)) {

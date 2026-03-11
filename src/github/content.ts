@@ -91,7 +91,8 @@ export const listDirectoryFiles = async (
   ref: string
 ): Promise<readonly string[]> => {
   try {
-    return await listDirectoryFilesRecursively(octokit, owner, repo, dirPath, ref)
+    const normalizedPath = dirPath.replace(/\/+$/, '')
+    return await listDirectoryFilesRecursively(octokit, owner, repo, normalizedPath, ref)
   } catch (err: unknown) {
     if (isNotFoundError(err)) {
       return []
