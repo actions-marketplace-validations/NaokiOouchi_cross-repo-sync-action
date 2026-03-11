@@ -9,3 +9,9 @@ sync:
     dest: .github/security.md
     repos:
       - NaokiOouchi/test-sync-target-a
+
+  - src: configs/
+    dest: .shared-configs/
+    delete: true
+    repos:
+      - NaokiOouchi/test-sync-target-a
