@@ -906,7 +906,12 @@ const expandDirectoryMapping = async (src, dest, deleteOrphans) => {
     if (!(0, exports.isDirectoryPath)(src)) {
         return [{ src, dest, delete: deleteOrphans }];
     }
-    const files = await listFilesRecursively(src);
+    const files = await listFilesRecursively(src).catch((err) => {
+        if (isEnoentError(err)) {
+            return [];
+        }
+        throw err;
+    });
     return files.map((file) => {
         const relativePath = path.relative(src, file);
         return {
@@ -927,6 +932,12 @@ const listFilesRecursively = async (dir) => {
         return [fullPath];
     }));
     return nestedResults.flat().sort();
+};
+const isEnoentError = (err) => {
+    return (typeof err === 'object' &&
+        err !== null &&
+        'code' in err &&
+        err.code === 'ENOENT');
 };
 //# sourceMappingURL=files.js.map
 

@@ -19,7 +19,13 @@ export const expandDirectoryMapping = async (
     return [{ src, dest, delete: deleteOrphans }]
   }
 
-  const files = await listFilesRecursively(src)
+  const files = await listFilesRecursively(src).catch((err: unknown) => {
+    if (isEnoentError(err)) {
+      return [] as readonly string[]
+    }
+    throw err
+  })
+
   return files.map((file) => {
     const relativePath = path.relative(src, file)
     return {
@@ -43,4 +49,13 @@ const listFilesRecursively = async (dir: string): Promise<readonly string[]> => 
     })
   )
   return nestedResults.flat().sort()
+}
+
+const isEnoentError = (err: unknown): boolean => {
+  return (
+    typeof err === 'object' &&
+    err !== null &&
+    'code' in err &&
+    (err as { code: string }).code === 'ENOENT'
+  )
 }
