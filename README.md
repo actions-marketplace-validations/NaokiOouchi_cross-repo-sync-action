@@ -5,6 +5,8 @@
 
 GitHub Action to sync files from a source repository to multiple target repositories via pull requests.
 
+**English** | [日本語](./README.ja.md)
+
 ## Use Cases
 
 - Share Copilot instructions (`.github/copilot-instructions.md`) across repos
